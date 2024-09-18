@@ -1,1 +1,154 @@
+#!/bin/bash
 
+# Path to your Desktop symlink
+DESKTOP=~/Desktop
+
+# Function to switch to the specified desktop folder
+switch_to_desktop() {
+    local TARGET=$1
+    local TARGET_DESKTOP=""
+
+    # Loop through Desktop_ folders and match case-insensitively
+    for folder in ~/Desktop_*; do
+        # Extract the suffix after "Desktop_" and convert to lowercase
+        FOLDER_SUFFIX=$(basename "$folder" | cut -d'_' -f2 | tr '[:upper:]' '[:lower:]')
+
+        # Compare with the user-provided desktop name (converted to lowercase)
+        if [[ "$FOLDER_SUFFIX" == "$TARGET" ]]; then
+            TARGET_DESKTOP="$folder"
+            break
+        fi
+    done
+
+    # Check if a matching desktop was found
+    if [ -z "$TARGET_DESKTOP" ]; then
+        echo "Error: Desktop '$1' does not exist."
+        exit 1
+    fi
+
+    # Switch to the matching desktop
+    if [[ "$(readlink $DESKTOP)" != "$TARGET_DESKTOP" ]]; then
+        echo "Switching to ${TARGET^} Desktop..."
+        rm $DESKTOP
+        ln -s $TARGET_DESKTOP $DESKTOP
+        kquitapp5 plasmashell && kstart5 plasmashell
+        echo "Switched to ${TARGET^} Desktop!"
+    else
+        echo "Already on ${TARGET^} Desktop."
+    fi
+}
+
+# Function to create a new desktop
+create_new_desktop() {
+    local NEW_DESKTOP_NAME=$1
+
+    # Convert the first letter to uppercase and rest to lowercase for consistency
+    NEW_DESKTOP_NAME=$(echo "$NEW_DESKTOP_NAME" | awk '{print toupper(substr($0, 1, 1)) tolower(substr($0, 2))}')
+
+    # Check if a folder already exists with this name
+    if [ -d ~/Desktop_"$NEW_DESKTOP_NAME" ]; then
+        echo "Error: A Desktop with the name '$NEW_DESKTOP_NAME' already exists."
+        exit 1
+    fi
+
+    # Create the new desktop folder
+    mkdir ~/Desktop_"$NEW_DESKTOP_NAME"
+    echo "Created new desktop folder: Desktop_$NEW_DESKTOP_NAME"
+
+    # Option to switch to the newly created desktop
+    echo "Do you want to switch to the new desktop now? (y/n)"
+    read -r SWITCH_NOW
+
+    if [[ "$SWITCH_NOW" == "y" || "$SWITCH_NOW" == "Y" ]]; then
+        switch_to_desktop "$(echo "$NEW_DESKTOP_NAME" | tr '[:upper:]' '[:lower:]')"
+    else
+        echo "You can switch to the new desktop later using: ./dswitch $NEW_DESKTOP_NAME"
+    fi
+}
+
+# Function to delete a desktop
+delete_desktop() {
+    local DELETE_DESKTOP_NAME=$1
+
+    # Convert the input to match the desktop name format (capitalize first letter)
+    DELETE_DESKTOP_NAME=$(echo "$DELETE_DESKTOP_NAME" | awk '{print toupper(substr($0, 1, 1)) tolower(substr($0, 2))}')
+
+    # Ensure the desktop exists
+    if [ ! -d ~/Desktop_"$DELETE_DESKTOP_NAME" ]; then
+        echo "Error: Desktop '$DELETE_DESKTOP_NAME' does not exist."
+        exit 1
+    fi
+
+    # Ensure the current desktop isn't being deleted
+    if [[ "$(readlink $DESKTOP)" == ~/Desktop_"$DELETE_DESKTOP_NAME" ]]; then
+        echo "Error: You cannot delete the currently active desktop."
+        exit 1
+    fi
+
+    # Ensure the user wants to delete the desktop
+    echo "Do you really want to delete the desktop $DELETE_DESKTOP_NAME? (y/n)"
+    read -r REALLY_DELETE
+
+    # Delete the desktop
+    if [[ "$REALLY_DELETE" == "y" || "$REALLY_DELETE" == "Y" ]]; then
+        rm -rf ~/Desktop_"$DELETE_DESKTOP_NAME"
+        echo "Desktop '$DELETE_DESKTOP_NAME' has been deleted."
+    else
+        echo "Delete operation canceled."
+    fi
+}
+
+# Function to list available desktops
+list_desktops() {
+    echo "Available Desktops:"
+    for folder in ~/Desktop_*; do
+        # Extract the suffix after "Desktop_" and capitalize the first letter
+        DESKTOP_SUFFIX=$(basename "$folder" | cut -d'_' -f2)
+        echo "  ${DESKTOP_SUFFIX}"
+    done
+}
+
+refresh_desktop() {
+    echo "Refreshing Desktops:"
+    kquitapp5 plasmashell && kstart5 plasmashell
+}
+
+# Ensure that an argument is provided
+if [ -z "$1" ]; then
+    echo "Usage: dswitch [work|game|create desktop_name|list|delete desktop_name|refresh]"
+    list_desktops
+    exit 1
+fi
+
+# Convert the input argument to lowercase for case-insensitive matching
+ACTION=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+
+# Determine action based on the argument
+case "$ACTION" in
+    create)
+        # The second argument should be the name of the new desktop
+        if [ -z "$2" ]; then
+            echo "Error: No name provided for the new desktop."
+            exit 1
+        fi
+        create_new_desktop "$2"
+        ;;
+    delete)
+        # The second argument should be the name of the desktop to delete
+        if [ -z "$2" ]; then
+            echo "Error: No name provided for the desktop to delete."
+            exit 1
+        fi
+        delete_desktop "$2"
+        ;;
+    list)
+        list_desktops
+        ;;
+    refresh)
+        refresh_desktop
+        ;;
+    *)
+        # Call the function to switch the desktop
+        switch_to_desktop "$ACTION"
+        ;;
+esac
